@@ -12,8 +12,8 @@ const URL = 'https://kodaktor.ru/j/users';
 const app = express();
 
 passport.use(new GoogleStrategy({
-    clientID: process.env.CLIENT_ID,
-    clientSecret: process.env.CLIENT_SECRET,
+    clientID: process.env.CLIENT_ID || process.argv[2],
+    clientSecret: process.env.CLIENT_SECRET || process.argv[3],
     callbackURL: `http://localhost:${port}/auth/google/callback`
   },
   function(token, tokenSecret, profile, done) {
