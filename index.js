@@ -2,57 +2,66 @@ const express = require('express');
 const { get } = require('axios');
 const bodyParser = require('body-parser');
 const session = require('express-session');
+const passport = require('passport');
+const GoogleStrategy = require('passport-google-oauth').OAuth2Strategy;
+require('dotenv').config();
 
 let items;
-const PORT = 4321;
+const port = process.env.PORT || 4321;
 const URL = 'https://kodaktor.ru/j/users';
 const app = express();
 
-const checkAuth = (r, res, next) => {
-    if (r.session.auth === 'ok') {
-        next();
-    } else {
-        res.redirect('/login');
-    }
-};
+passport.use(new GoogleStrategy({
+    clientID: process.env.CLIENT_ID,
+    clientSecret: process.env.CLIENT_SECRET,
+    callbackURL: `http://localhost:${port}/auth/google/callback`
+  },
+  function(token, tokenSecret, profile, done) {
+      return done(null, profile);
+  }
+));
+
+passport.serializeUser(function(user, done) {
+    done(null, user);
+});
+
+passport.deserializeUser(function(obj, done) {
+    done(null, obj);
+});
 
 app
     .use(bodyParser.json())
     .use(bodyParser.urlencoded({ extended: true }))
     .use(session({ secret: 'mysecret', resave: true, saveUninitialized: true}))
+    .use(passport.initialize())
+    .use(passport.session())
     .get('/', r => r.res.render('author', { name: 'Наталья Кузнецова' }))
     .get(/hello/, r => r.res.end('Hello world!'))
     .get(/author/, r => {
         r.res.render('author', { name: 'Наталья Кузнецова' })
     })
     .get('/login', r => r.res.render('login'))
-    .post('/login/check', r => {
-        const { body : { login : l } } = r;
-        const user = items.find(({ login }) => login === l);
-        if (user) {
-            if (user.password === r.body.pass) {
-                r.session.auth = 'ok';
-                r.res.render('success');
-            } else {
-                r.res.send('Wrong pass!');
-            }
+    .get('/auth/google', passport.authenticate('google', { scope: ['https://www.googleapis.com/auth/plus.login'] }))
+    .get('/auth/google/callback', 
+    passport.authenticate('google', { failureRedirect: '/login' }),
+    function(r) {
+        r.res.redirect('/users');
+    })
+    .get(/users/, async (req, res) => {
+        if (req.isAuthenticated()) {
+            res.render('list', { title: 'Login list', items });
         } else {
-            r.res.send('No such user!');
+            res.redirect('/login');
         }
     })
-    .get(/users/, checkAuth, async r => r.res.render('list', { title: 'Login list', items }))
-    .get('/logout', r => {
-        if (r.session.auth === 'ok') {
-            r.session.auth = '';
-            r.res.redirect('/login');
-        } else {
-            r.res.redirect('/login');
-        }
+    .get('/logout', (req, res) => {
+        req.logout();
+        res.redirect('/');
     })
     .use(r => r.res.status(404).end('Not here, sorry'))
     .use((e, r, res, n) => res.status(500).end(`Error: ${e}`))
     .set('view engine', 'pug')
-    .listen(process.env.PORT || PORT, async () => {
+    .listen(port, async () => {
     console.log(`Start process ${process.pid}`);
     ({ data: { users: items }} = await get(URL));
 });
